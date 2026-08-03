@@ -52,6 +52,8 @@ export const VideoWorkspace: React.FC = () => {
     redo,
   } = useClipper();
 
+  const activeClip = state.activeClip;
+
   const navigate = useNavigate();
 
   const playerRef = useRef<ReactPlayer | null>(null);
@@ -116,35 +118,35 @@ export const VideoWorkspace: React.FC = () => {
       interval = setInterval(() => {
         setCurrentTime((prev) => {
           const next = prev + 0.1 * playbackRate;
-          if (state.activeClip && next >= state.activeClip.endSeconds) {
-            return state.activeClip.startSeconds;
+          if (activeClip && next >= activeClip.endSeconds) {
+            return activeClip.startSeconds;
           }
           return next;
         });
       }, 100);
     }
     return () => clearInterval(interval);
-  }, [isPlaying, videoError, state.videoSource, playbackRate, state.activeClip]);
+  }, [isPlaying, videoError, state.videoSource, playbackRate, activeClip]);
 
   // Synchronize playback rate - handled directly by ReactPlayer prop
   // Synchronize video volume & muted states - handled directly by ReactPlayer props
 
   // Synchronize video seeking within clip bounds
   useEffect(() => {
-    if (state.activeClip) {
-      setCurrentTime(state.activeClip.startSeconds);
+    if (activeClip) {
+      setCurrentTime(activeClip.startSeconds);
       if (playerRef.current && !videoError) {
         try {
-          seekTo(state.activeClip.startSeconds);
+          seekTo(activeClip.startSeconds);
         } catch (e) {
           // ignore seek error on unready video
         }
       }
     }
-  }, [state.activeClip, videoError]);
+  }, [activeClip, videoError]);
 
   // Speech synthesis trigger when subtitle line changes during playback
-  const currentSubLine = state.activeClip?.subtitles.find(
+  const currentSubLine = activeClip?.subtitles.find(
     (sub) => currentTime >= sub.start && currentTime <= sub.end
   );
 
@@ -189,8 +191,8 @@ export const VideoWorkspace: React.FC = () => {
     setCurrentTime(time);
 
     // Loop back if passed end of clip
-    if (state.activeClip && time >= state.activeClip.endSeconds) {
-      if (playerRef.current) seekTo(state.activeClip.startSeconds);
+    if (activeClip && time >= activeClip.endSeconds) {
+      if (playerRef.current) seekTo(activeClip.startSeconds);
     }
   };
 
@@ -226,14 +228,14 @@ export const VideoWorkspace: React.FC = () => {
   };
 
   const handleCopyCaption = () => {
-    if (!state.activeClip) return;
-    const fullText = `${state.activeClip.suggestedCaption}\n\n${state.activeClip.suggestedHashtags.join(' ')}`;
+    if (!activeClip) return;
+    const fullText = `${activeClip.suggestedCaption}\n\n${activeClip.suggestedHashtags.join(' ')}`;
     navigator.clipboard.writeText(fullText);
     setCopiedCaption(true);
     setTimeout(() => setCopiedCaption(false), 2000);
   };
 
-  if (!state.activeClip) {
+  if (!activeClip) {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-8">
         <div className="text-center space-y-4 max-w-md">
@@ -268,7 +270,7 @@ export const VideoWorkspace: React.FC = () => {
             {/* Select Clip Dropdown */}
             {state.generatedClips.length > 1 && (
               <select
-                value={state.activeClip.id}
+                value={activeClip.id}
                 onChange={(e) => selectClipForEditing(e.target.value)}
                 className="bg-zinc-900 text-xs font-bold text-zinc-200 px-3 py-2 rounded-xl border border-zinc-800 focus:outline-none focus:border-purple-500"
               >
@@ -283,11 +285,11 @@ export const VideoWorkspace: React.FC = () => {
             <div className="hidden md:flex items-center gap-2">
               <span className="text-xs font-mono font-bold text-amber-300 bg-amber-950/80 px-2.5 py-1 rounded-lg border border-amber-800 flex items-center gap-1">
                 <Flame className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                <span>Viral Score {state.activeClip.viralScore}/100</span>
+                <span>Viral Score {activeClip.viralScore}/100</span>
               </span>
 
               <span className="text-xs font-mono font-bold text-purple-300 bg-purple-950/80 px-2.5 py-1 rounded-lg border border-purple-800 capitalize">
-                {state.activeClip.layoutMode}
+                {activeClip.layoutMode}
               </span>
             </div>
           </div>
@@ -353,13 +355,13 @@ export const VideoWorkspace: React.FC = () => {
                         9:16 Smart Render
                       </span>
                       <p className="text-xs font-semibold text-white truncate max-w-[180px] mx-auto">
-                        {state.activeClip.title}
+                        {activeClip.title}
                       </p>
                     </div>
                     <div className="pt-1 flex justify-center">
                       <span className="text-[9px] font-mono text-zinc-400 bg-zinc-800/80 px-2 py-0.5 rounded border border-zinc-700 flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                        Track: {state.activeClip.speakerTrack}
+                        Track: {activeClip.speakerTrack}
                       </span>
                     </div>
                   </div>
@@ -370,7 +372,7 @@ export const VideoWorkspace: React.FC = () => {
               {showBoundingBox && (
                 <div className="absolute inset-x-8 top-12 bottom-28 border-2 border-purple-500/50 rounded pointer-events-none animate-pulse flex flex-col items-center justify-center z-20">
                   <span className="text-[8px] bg-purple-500 text-white px-1 absolute top-0 left-0 font-mono">
-                    Speaker Tracking: {state.activeClip.speakerTrack}
+                    Speaker Tracking: {activeClip.speakerTrack}
                   </span>
                 </div>
               )}
@@ -428,8 +430,8 @@ export const VideoWorkspace: React.FC = () => {
               <div className="space-y-1">
                 <input
                   type="range"
-                  min={state.activeClip.startSeconds}
-                  max={state.activeClip.endSeconds}
+                  min={activeClip.startSeconds}
+                  max={activeClip.endSeconds}
                   step="0.1"
                   value={currentTime}
                   onChange={handleSeek}
@@ -443,7 +445,7 @@ export const VideoWorkspace: React.FC = () => {
                       .padStart(2, '0')}
                   </span>
                   <span className="text-purple-400 font-bold">
-                    Clip: {state.activeClip.durationText}
+                    Clip: {activeClip.durationText}
                   </span>
                 </div>
               </div>
@@ -589,11 +591,11 @@ export const VideoWorkspace: React.FC = () => {
                 <span className="w-16 text-[10px] font-bold text-zinc-500">VIDEO 1</span>
                 <div className="flex-1 h-7 bg-purple-900/20 border border-purple-500/30 rounded flex items-center px-1 relative overflow-hidden">
                   <div className="w-full h-5 bg-purple-500/40 rounded border border-purple-500 flex items-center px-2 text-[10px] text-purple-200 font-bold truncate relative">
-                    {state.activeClip.title} ({state.activeClip.durationText})
+                    {activeClip.title} ({activeClip.durationText})
                     {(() => {
-                      const clipDuration = state.activeClip.endSeconds - state.activeClip.startSeconds;
+                      const clipDuration = activeClip.endSeconds - activeClip.startSeconds;
                       const progressPct = clipDuration > 0
-                        ? ((currentTime - state.activeClip.startSeconds) / clipDuration) * 100
+                        ? ((currentTime - activeClip.startSeconds) / clipDuration) * 100
                         : 0;
                       return (
                         <div
@@ -613,15 +615,15 @@ export const VideoWorkspace: React.FC = () => {
                   ref={timelineRef}
                   className="flex-1 h-7 bg-zinc-800/20 border border-zinc-700 rounded flex items-center px-1 relative overflow-hidden"
                   onMouseMove={(e) => {
-                    if (!draggingSubId || !state.activeClip || !timelineRef.current) return;
-                    const clipStart = state.activeClip.startSeconds;
-                    const clipEnd = state.activeClip.endSeconds;
+                    if (!draggingSubId || !activeClip || !timelineRef.current) return;
+                    const clipStart = activeClip.startSeconds;
+                    const clipEnd = activeClip.endSeconds;
                     const clipDuration = clipEnd - clipStart;
                     const rect = timelineRef.current.getBoundingClientRect();
                     const x = e.clientX - rect.left;
                     const pct = Math.max(0, Math.min(1, x / rect.width));
                     const newStart = clipStart + pct * clipDuration;
-                    const sub = state.activeClip.subtitles.find((s) => s.id === draggingSubId);
+                    const sub = activeClip.subtitles.find((s) => s.id === draggingSubId);
                     if (sub) {
                       const dur = sub.end - sub.start;
                       const clampedStart = Math.max(clipStart, Math.min(clipEnd - dur, newStart));
@@ -633,9 +635,9 @@ export const VideoWorkspace: React.FC = () => {
                   onMouseLeave={() => setDraggingSubId(null)}
                 >
                   {(() => {
-                    const clipStart = state.activeClip.startSeconds;
-                    const clipDuration = state.activeClip.endSeconds - clipStart;
-                    return state.activeClip.subtitles.map((sub, idx) => {
+                    const clipStart = activeClip.startSeconds;
+                    const clipDuration = activeClip.endSeconds - clipStart;
+                    return activeClip.subtitles.map((sub, idx) => {
                       const leftPct = clipDuration > 0 ? ((sub.start - clipStart) / clipDuration) * 100 : 0;
                       const widthPct = clipDuration > 0 ? ((sub.end - sub.start) / clipDuration) * 100 : 0;
                       return (
@@ -765,7 +767,7 @@ export const VideoWorkspace: React.FC = () => {
               </div>
 
               <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
-                {state.activeClip.subtitles.map((sub, idx) => (
+                {activeClip.subtitles.map((sub, idx) => (
                   <div
                     key={sub.id}
                     className="p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800 hover:border-purple-500/40 transition-all space-y-2"
@@ -992,7 +994,7 @@ export const VideoWorkspace: React.FC = () => {
                     key={layout.id}
                     onClick={() => updateActiveClipLayout(layout.id as LayoutMode)}
                     className={`p-4 rounded-xl border text-left space-y-1 transition-all ${
-                      state.activeClip.layoutMode === layout.id
+                      activeClip.layoutMode === layout.id
                         ? 'bg-purple-950/40 border-purple-500 shadow-md'
                         : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
                     }`}
@@ -1022,12 +1024,12 @@ export const VideoWorkspace: React.FC = () => {
                       key={target.id}
                       onClick={() =>
                         updateActiveClipLayout(
-                          state.activeClip.layoutMode,
+                          activeClip.layoutMode,
                           target.id as SpeakerTrackMode
                         )
                       }
                       className={`py-2 rounded-lg text-xs font-semibold border transition-all ${
-                        state.activeClip.speakerTrack === target.id
+                        activeClip.speakerTrack === target.id
                           ? 'bg-purple-600 border-purple-500 text-white'
                           : 'bg-zinc-900 border-zinc-800 text-zinc-400'
                       }`}
@@ -1064,7 +1066,7 @@ export const VideoWorkspace: React.FC = () => {
                     Saran Deskripsi / Caption TikTok & Shorts
                   </span>
                   <p className="text-xs text-zinc-200 leading-relaxed font-mono bg-zinc-900 p-3 rounded-lg border border-zinc-800">
-                    {state.activeClip.suggestedCaption}
+                    {activeClip.suggestedCaption}
                   </p>
                 </div>
 
@@ -1073,7 +1075,7 @@ export const VideoWorkspace: React.FC = () => {
                     Hashtags Tren Rekomendasi AI
                   </span>
                   <div className="flex flex-wrap gap-1.5">
-                    {state.activeClip.suggestedHashtags.map((tag, i) => (
+                    {activeClip.suggestedHashtags.map((tag, i) => (
                       <span
                         key={i}
                         className="text-xs font-mono text-cyan-300 bg-cyan-950/60 px-2.5 py-0.5 rounded border border-cyan-800"

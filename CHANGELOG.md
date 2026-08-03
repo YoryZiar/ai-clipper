@@ -1,5 +1,29 @@
 # Changelog
 
+## v2.7.0 (2026-08-04)
+
+### 🔐 Security
+- **#1 Keamanan API key:** Manajemen key dipindah ke server-side (`SERVER_*` env). Server kini prioritas pakai `GEMINI_API_KEY`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL` dari environment. Key klien hanya fallback.
+- **#1a Endpoint `/api/ai-config`:** Menampilkan status konfigurasi server (apakah key terkonfigurasi, default model) TANPA membocorkan key.
+- **#1b Fix crash forced-reasoning:** Parsing respons OpenAI kini fallback ke `reasoning_content` jika `content` kosong (kompatibel model Kenari seperti `deepseek-v4-flash`, `kimi-k3`), dan `JSON.parse` dibungkus `try/catch` agar tak crash saat JSON tidak valid.
+
+### 🎙 New Features — Auto-Transkripsi
+- **#3 Transkripsi otomatis:** Tombol "Transkrip Otomatis" di tab upload video. Menggunakan Web Speech API native browser (`SpeechRecognition`/`webkitSpeechRecognition`) untuk menghasilkan transkrip dari file video MP4 tanpa server, dengan mapping bahasa (`Indonesian`→`id-ID`, `English`→`en-US`, `Japanese`→`ja-JP`, `Spanish`→`es-ES`).
+- **#3a** Progress transkrip parsial ditampilkan real-time dan disimpan ke `clipperConfig.transcriptText` untuk dikirim ke analisis AI.
+
+### 🎬 New Features — Render
+- **#4 Burn-in subtitle:** Toggle "Burn-in Subtitle (Tertanam di Video)" di ExportModal. Subtitle di-render langsung ke video via filter `drawtext` FFmpeg.wasm (per-baris, posisi bawah, font size adaptif resolusi, border hitam + shadow), sehingga klip siap upload tanpa overlay terpisah.
+
+### 🧹 Cleanup & Quality
+- **#5 TypeScript strict mode:** `"strict": true` diaktifkan; ±28 error strict (implicit any, null checks) diperbaiki. `@types/react`, `@types/react-dom`, `@types/cors` ditambahkan ke devDependencies.
+- **#5a** 7 file scratch test (`test-react-player-*.js/.jsx`, `test-rp-client.html`) di-un-track dan ditambahkan ke `.gitignore`.
+- **#5b** Default model OpenAI kini `gpt-5-6-luna` (model Kenari terverifikasi) menggantikan `gpt-4o-mini`.
+
+### 📦 New Dependencies (devDependencies)
+- `@types/react`, `@types/react-dom`, `@types/cors` — tipe untuk strict mode
+
+---
+
 ## v2.6.0 (2026-08-04)
 
 ### 🐛 Bug Fixes

@@ -9,6 +9,12 @@ export const SettingsPage: React.FC = () => {
   const [openaiModel, setOpenaiModel] = useState('');
   const [provider, setProvider] = useState('google');
   const [saved, setSaved] = useState(false);
+  const [serverConfig, setServerConfig] = useState<{
+    configuredProvider?: string;
+    serverHasGemini?: boolean;
+    serverHasOpenAI?: boolean;
+    defaultModel?: string;
+  }>({});
 
   useEffect(() => {
     const savedGeminiKey = secureStorage.getItem('CUSTOM_GEMINI_API_KEY');
@@ -21,6 +27,11 @@ export const SettingsPage: React.FC = () => {
     setOpenaiBaseUrl(savedOpenaiBaseUrl);
     setOpenaiModel(savedOpenaiModel);
     setProvider(savedProvider);
+
+    fetch('/api/ai-config')
+      .then((res) => res.json())
+      .then((data) => setServerConfig(data))
+      .catch((err) => console.error('Failed to fetch AI config:', err));
   }, []);
 
   const handleSave = () => {
@@ -46,14 +57,22 @@ export const SettingsPage: React.FC = () => {
         </div>
 
         <div className="bg-[#0c0c0e] border border-zinc-800 rounded-2xl p-6 sm:p-8 shadow-xl">
-          <div className="flex items-center gap-3 mb-6 pb-6 border-b border-zinc-800">
-            <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center border border-purple-500/20">
-              <Server className="w-5 h-5 text-purple-400" />
+          <div className="flex items-center justify-between mb-6 pb-6 border-b border-zinc-800">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center border border-purple-500/20">
+                <Server className="w-5 h-5 text-purple-400" />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold text-white">AI Provider</h2>
+                <p className="text-sm text-zinc-500">Pilih provider AI yang akan digunakan untuk AutoClip.</p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-xl font-semibold text-white">AI Provider</h2>
-              <p className="text-sm text-zinc-500">Pilih provider AI yang akan digunakan untuk AutoClip.</p>
-            </div>
+            {(serverConfig.serverHasGemini || serverConfig.serverHasOpenAI) && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Server AI terkonfigurasi
+              </span>
+            )}
           </div>
 
           <div className="space-y-6">

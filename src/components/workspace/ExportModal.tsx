@@ -12,8 +12,54 @@ import {
   Zap,
   Film,
   FileCheck,
+  Type,
 } from 'lucide-react';
-import { RenderEngine } from '../../types';
+import { RenderEngine, SubtitleLine } from '../../types';
+
+const escapeDrawText = (text: string): string => {
+  return text
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '\\"')
+    .replace(/:/g, '\\:')
+    .replace(/,/g, '\\,')
+    .replace(/%/g, '\\%');
+};
+
+const buildSubtitleFilter = (
+  clip: { startSeconds: number; endSeconds: number; subtitles?: SubtitleLine[] },
+  targetWidth: number,
+  targetHeight: number
+): string => {
+  if (!clip.subtitles || clip.subtitles.length === 0) return '';
+
+  const fontSize = Math.min(60, Math.max(24, Math.round(targetWidth / 40)));
+  const clipDuration = clip.endSeconds - clip.startSeconds;
+
+  const filters: string[] = [];
+
+  for (const sub of clip.subtitles) {
+    if (!sub.text || !sub.text.trim()) continue;
+
+    const startOffset = sub.start - clip.startSeconds;
+    const endOffset = sub.end - clip.startSeconds;
+
+    if (endOffset <= 0 || startOffset >= clipDuration) continue;
+
+    const clampedStart = Math.max(0, startOffset);
+    const clampedEnd = Math.max(0, endOffset);
+
+    if (clampedEnd <= clampedStart) continue;
+
+    const escapedText = escapeDrawText(sub.text.trim());
+
+    filters.push(
+      `drawtext=text='${escapedText}':x=(w-text_w)/2:y=h-180:fontsize=${fontSize}:fontcolor=white:borderw=3:bordercolor=black:shadowx=2:shadowy=2:shadowcolor=black@0.8:enable='between(t,${clampedStart.toFixed(2)},${clampedEnd.toFixed(2)})'`
+    );
+  }
+
+  return filters.join(',');
+};
 
 export const ExportModal: React.FC = () => {
   const { state, dispatch } = useClipper();
@@ -21,6 +67,7 @@ export const ExportModal: React.FC = () => {
 
   const [resolution, setResolution] = useState<'1080p' | '4k'>('1080p');
   const [fps, setFps] = useState<30 | 60>(60);
+  const [burnSubtitles, setBurnSubtitles] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
   const [exportComplete, setExportComplete] = useState(false);
@@ -107,7 +154,13 @@ export const ExportModal: React.FC = () => {
 
       ffmpeg.on('progress', progressHandler);
 
-      const filterGraph = `crop=ih*9/16:ih,scale=${targetWidth}:${targetHeight}`;
+      let filterGraph = `crop=ih*9/16:ih,scale=${targetWidth}:${targetHeight}`;
+      if (burnSubtitles) {
+        const subtitleFilter = buildSubtitleFilter(clip, targetWidth, targetHeight);
+        if (subtitleFilter) {
+          filterGraph += `,${subtitleFilter}`;
+        }
+      }
 
       await ffmpeg.exec([
         '-i', 'input.mp4',
@@ -316,6 +369,26 @@ export const ExportModal: React.FC = () => {
                   </button>
                 </div>
               </div>
+            </div>
+
+            {/* Burn-in Subtitle Toggle */}
+            <div className="p-3 bg-zinc-900/60 rounded-xl border border-zinc-800 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <input
+                  type="checkbox"
+                  id="burn-subtitles"
+                  checked={burnSubtitles}
+                  onChange={(e) => setBurnSubtitles(e.target.checked)}
+                  className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-purple-600 focus:ring-purple-500 focus:ring-offset-zinc-900 cursor-pointer accent-purple-600"
+                />
+                <label htmlFor="burn-subtitles" className="text-xs font-bold text-zinc-200 cursor-pointer flex items-center gap-1.5 select-none">
+                  <Type className="w-3.5 h-3.5 text-purple-400" />
+                  Burn-in Subtitle (Tertanam di Video)
+                </label>
+              </div>
+              <span className="text-[10px] text-zinc-400 font-mono">
+                {state.activeClip.subtitles?.length || 0} line
+              </span>
             </div>
 
             {/* Features Guarantee */}

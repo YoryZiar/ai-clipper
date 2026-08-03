@@ -4,9 +4,11 @@ Platform otomatis bertenaga AI yang menyeleksi bagian paling menarik dari video 
 
 ## Fitur Utama
 
-- **AI Viral Hook Detection** — Gemini / OpenAI menganalisis transkrip, menentukan momen dengan skor viralitas tertinggi (85–99/100)
+- **AI Viral Hook Detection** — Gemini / OpenAI (OpenAI-compatible, default model `gpt-5-6-luna`) menganalisis transkrip, menentukan momen dengan skor viralitas tertinggi (85–99/100)
+- **Auto-Transkripsi** — Generate transkrip otomatis dari video MP4 via Web Speech API native browser (tanpa server)
 - **Smart Crop 9:16** — Pelacakan wajah pembicara otomatis dengan 4 mode layout (Smart Crop, Split-Screen, Center Fit, Blurred BG)
 - **Subtitle Karaoke Multi-Bahasa** — Animasi sorot per kata, 4 preset gaya populer (MrBeast Bold, Neon Cyber, Podcast Clean, Minimalist White)
+- **Burn-in Subtitle** — Opsi render subtitle tertanam langsung ke video MP4 via FFmpeg.wasm, siap upload tanpa overlay terpisah
 - **Multi-Track Timeline Editor** — Timeline interaktif dengan Video, Text, dan Audio track; drag subtitle block; undo/redo
 - **Render Lokal FFmpeg.wasm** — Render video 100% di browser, tanpa upload ke server, tanpa watermark
 - **YouTube Integration** — Fetch metadata video via `yt-dlp` server-side
@@ -49,6 +51,9 @@ Server berjalan di `http://localhost:3000`.
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `GEMINI_API_KEY` | Tidak (opsional) | Default Gemini API key server-side |
+| `OPENAI_API_KEY` | Tidak | Default API key untuk provider OpenAI-compatible (mis. Kenari) |
+| `OPENAI_BASE_URL` | Tidak | Base URL OpenAI (default: `https://kenari.id/v1`) |
+| `OPENAI_MODEL` | Tidak | Default model OpenAI (default: `gpt-5-6-luna`) |
 | `APP_URL` | Tidak | Origin URL untuk CORS (default: allow all) |
 | `PORT` | Tidak | Server port (default: 3000) |
 
