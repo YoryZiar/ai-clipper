@@ -85,6 +85,8 @@ app.get("/api/ai-config", (_req, res) => {
 });
 
 // Rate limiter for AI generation endpoint
+// Catatan: Store in-memory default express-rate-limit tidak dibagikan (shared) antar instance Vercel Serverless Function.
+// Untuk produksi multi-instance / serverless, disarankan menggunakan store eksternal (seperti Redis / Upstash).
 const generateClipsLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 30,
@@ -381,7 +383,7 @@ app.get("/api/youtube-info/available", async (_req, res) => {
   }
 });
 
-// Start Server with Vite Middleware
+// Start Server with Vite Middleware (hanya dijalankan jika bukan lingkungan Vercel serverless)
 async function start() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -402,4 +404,8 @@ async function start() {
   });
 }
 
-start();
+if (!process.env.VERCEL) {
+  start();
+}
+
+export default app;
