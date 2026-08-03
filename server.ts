@@ -1,6 +1,5 @@
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import OpenAI from "openai";
 import dotenv from "dotenv";
@@ -386,6 +385,7 @@ app.get("/api/youtube-info/available", async (_req, res) => {
 // Start Server with Vite Middleware (hanya dijalankan jika bukan lingkungan Vercel serverless)
 async function start() {
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
