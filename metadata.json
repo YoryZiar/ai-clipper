@@ -1,0 +1,6 @@
+{
+  "name": "AI Auto Clipper",
+  "description": "Platform pemotong video otomatis bertenaga AI untuk membuat klip viral 9:16 (Shorts, Reels, TikTok) dengan Smart Crop pengikut pembicara, editor subtitle multi-bahasa, dan pemroses render lokal & cloud.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
