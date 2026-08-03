@@ -1,6 +1,5 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useReducer, useCallback, useMemo } from 'react';
 import {
-  PageView,
   VideoSource,
   ClipperConfig,
   ClipSegment,
@@ -10,86 +9,174 @@ import {
   SpeakerTrackMode,
   SubtitleLine,
 } from '../types';
-import { CAPTION_PRESETS } from '../data/sampleVideos';
+import { CAPTION_PRESETS } from '../data/captionPresets';
+import { useToast } from './ToastContext';
+import { secureStorage } from '../utils/secureStorage';
 
-interface ClipperContextType {
-  currentPage: PageView;
-  setCurrentPage: (page: PageView) => void;
+interface ClipDataState {
   videoSource: VideoSource | null;
-  setVideoSource: (video: VideoSource | null) => void;
   youtubeUrlInput: string;
-  setYoutubeUrlInput: (url: string) => void;
   clipperConfig: ClipperConfig;
-  setClipperConfig: React.Dispatch<React.SetStateAction<ClipperConfig>>;
   generatedClips: ClipSegment[];
   activeClip: ClipSegment | null;
-  setActiveClip: (clip: ClipSegment | null) => void;
   captionStyle: CaptionStyle;
-  setCaptionStyle: React.Dispatch<React.SetStateAction<CaptionStyle>>;
   isAnalyzing: boolean;
   analysisPhase: 1 | 2;
   analysisProgress: number;
   analysisStepMessage: string;
   exportModalOpen: boolean;
-  setExportModalOpen: (open: boolean) => void;
   renderEngine: RenderEngine;
-  setRenderEngine: (engine: RenderEngine) => void;
-  
-  // Actions
-  startAIAnalysis: () => Promise<void>;
-  selectClipForEditing: (clipId: string) => void;
-  updateActiveClipSubtitle: (id: string, field: keyof SubtitleLine, value: any) => void;
-  addSubtitleLine: () => void;
-  deleteSubtitleLine: (id: string) => void;
-  updateActiveClipLayout: (layoutMode: LayoutMode, speakerTrack?: SpeakerTrackMode) => void;
+  history: ClipSegment[][];
+  historyIndex: number;
 }
 
-const ClipperContext = createContext<ClipperContextType | undefined>(undefined);
+type ClipDataAction =
+  | { type: 'SET_VIDEO_SOURCE'; payload: VideoSource | null }
+  | { type: 'SET_YOUTUBE_URL'; payload: string }
+  | { type: 'SET_CONFIG'; payload: Partial<ClipperConfig> }
+  | { type: 'SET_GENERATED_CLIPS'; payload: ClipSegment[] }
+  | { type: 'SET_ACTIVE_CLIP'; payload: ClipSegment | null }
+  | { type: 'UPDATE_CLIP'; payload: ClipSegment }
+  | { type: 'SET_CAPTION_STYLE'; payload: CaptionStyle }
+  | { type: 'SET_ANALYZING'; payload: boolean }
+  | { type: 'SET_ANALYSIS_PHASE'; payload: 1 | 2 }
+  | { type: 'SET_ANALYSIS_PROGRESS'; payload: number }
+  | { type: 'SET_ANALYSIS_MESSAGE'; payload: string }
+  | { type: 'SET_EXPORT_MODAL'; payload: boolean }
+  | { type: 'SET_RENDER_ENGINE'; payload: RenderEngine }
+  | { type: 'UNDO' }
+  | { type: 'REDO' };
 
-export const ClipperProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentPage, setCurrentPage] = useState<PageView>('landing');
-  const [videoSource, setVideoSource] = useState<VideoSource | null>(null);
-  const [youtubeUrlInput, setYoutubeUrlInput] = useState<string>('');
-  
-  const [clipperConfig, setClipperConfig] = useState<ClipperConfig>({
+function clipDataReducer(state: ClipDataState, action: ClipDataAction): ClipDataState {
+  const pushHistory = (s: ClipDataState) => ({
+    ...s,
+    history: [...s.history.slice(0, s.historyIndex + 1), s.generatedClips],
+    historyIndex: Math.min(s.historyIndex + 1, s.history.length),
+  });
+
+  switch (action.type) {
+    case 'SET_VIDEO_SOURCE':
+      return { ...state, videoSource: action.payload };
+    case 'SET_YOUTUBE_URL':
+      return { ...state, youtubeUrlInput: action.payload };
+    case 'SET_CONFIG':
+      return { ...state, clipperConfig: { ...state.clipperConfig, ...action.payload } };
+    case 'SET_GENERATED_CLIPS': {
+      const withHistory = pushHistory(state);
+      return { ...withHistory, generatedClips: action.payload };
+    }
+    case 'SET_ACTIVE_CLIP':
+      return { ...state, activeClip: action.payload };
+    case 'UPDATE_CLIP': {
+      const withHistory = pushHistory(state);
+      return {
+        ...withHistory,
+        activeClip: action.payload,
+        generatedClips: withHistory.generatedClips.map((c) =>
+          c.id === action.payload.id ? action.payload : c
+        ),
+      };
+    }
+    case 'SET_CAPTION_STYLE':
+      return { ...state, captionStyle: action.payload };
+    case 'SET_ANALYZING':
+      return { ...state, isAnalyzing: action.payload };
+    case 'SET_ANALYSIS_PHASE':
+      return { ...state, analysisPhase: action.payload };
+    case 'SET_ANALYSIS_PROGRESS':
+      return { ...state, analysisProgress: action.payload };
+    case 'SET_ANALYSIS_MESSAGE':
+      return { ...state, analysisStepMessage: action.payload };
+    case 'SET_EXPORT_MODAL':
+      return { ...state, exportModalOpen: action.payload };
+    case 'SET_RENDER_ENGINE':
+      return { ...state, renderEngine: action.payload };
+    case 'UNDO':
+      if (state.historyIndex > 0) {
+        const newIndex = state.historyIndex - 1;
+        const prevClips = state.history[newIndex];
+        const activeFromHistory = state.activeClip
+          ? prevClips.find((c) => c.id === state.activeClip!.id) || prevClips[0] || null
+          : null;
+        return { ...state, generatedClips: prevClips, activeClip: activeFromHistory, historyIndex: newIndex };
+      }
+      return state;
+    case 'REDO':
+      if (state.historyIndex < state.history.length - 1) {
+        const newIndex = state.historyIndex + 1;
+        const nextClips = state.history[newIndex];
+        const activeFromHistory = state.activeClip
+          ? nextClips.find((c) => c.id === state.activeClip!.id) || nextClips[0] || null
+          : null;
+        return { ...state, generatedClips: nextClips, activeClip: activeFromHistory, historyIndex: newIndex };
+      }
+      return state;
+    default:
+      return state;
+  }
+}
+
+const initialState: ClipDataState = {
+  videoSource: null,
+  youtubeUrlInput: '',
+  clipperConfig: {
     genre: 'Podcast',
     clipCount: 3,
     targetDuration: '45-60s',
     subtitleLang: 'Indonesian',
     speakerTrackMode: 'auto-switch',
     layoutMode: 'smart-crop-916',
-  });
+  },
+  generatedClips: [],
+  activeClip: null,
+  captionStyle: CAPTION_PRESETS[0],
+  isAnalyzing: false,
+  analysisPhase: 1,
+  analysisProgress: 0,
+  analysisStepMessage: '',
+  exportModalOpen: false,
+  renderEngine: 'ffmpeg-wasm',
+  history: [],
+  historyIndex: -1,
+};
 
-  const [generatedClips, setGeneratedClips] = useState<ClipSegment[]>([]);
-  const [activeClip, setActiveClip] = useState<ClipSegment | null>(null);
-  const [captionStyle, setCaptionStyle] = useState<CaptionStyle>(CAPTION_PRESETS[0]);
-  
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisPhase, setAnalysisPhase] = useState<1 | 2>(1);
-  const [analysisProgress, setAnalysisProgress] = useState(0);
-  const [analysisStepMessage, setAnalysisStepMessage] = useState('');
-  
-  const [exportModalOpen, setExportModalOpen] = useState(false);
-  const [renderEngine, setRenderEngine] = useState<RenderEngine>('ffmpeg-wasm');
+interface ClipperContextType {
+  state: ClipDataState;
+  dispatch: React.Dispatch<ClipDataAction>;
+  startAIAnalysis: () => Promise<void>;
+  selectClipForEditing: (clipId: string) => void;
+  updateActiveClipSubtitle: (id: string, field: keyof SubtitleLine, value: any) => void;
+  addSubtitleLine: () => void;
+  deleteSubtitleLine: (id: string) => void;
+  updateActiveClipLayout: (layoutMode: LayoutMode, speakerTrack?: SpeakerTrackMode) => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  undo: () => void;
+  redo: () => void;
+}
 
-  // Perform 2-phase AI Analysis call
-  const startAIAnalysis = async () => {
-    setIsAnalyzing(true);
-    setAnalysisPhase(1);
-    setAnalysisProgress(10);
-    setAnalysisStepMessage('Fase 1: Berpikir AI - Mengekstrak audio & menganalisis transkrip...');
+const ClipperContext = createContext<ClipperContextType | undefined>(undefined);
 
-    // Progress simulation step 1
+export const ClipperProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { addToast } = useToast();
+  const [state, dispatch] = useReducer(clipDataReducer, initialState);
+
+  const startAIAnalysis = useCallback(async () => {
+    dispatch({ type: 'SET_ANALYZING', payload: true });
+    dispatch({ type: 'SET_ANALYSIS_PHASE', payload: 1 });
+    dispatch({ type: 'SET_ANALYSIS_PROGRESS', payload: 10 });
+    dispatch({ type: 'SET_ANALYSIS_MESSAGE', payload: 'Fase 1: Berpikir AI - Mengekstrak audio & menganalisis transkrip...' });
+
     await new Promise((r) => setTimeout(r, 800));
-    setAnalysisProgress(35);
-    setAnalysisStepMessage('Fase 1: Menentukan skor viralitas, hook emosional & deteksi pembicara...');
+    dispatch({ type: 'SET_ANALYSIS_PROGRESS', payload: 35 });
+    dispatch({ type: 'SET_ANALYSIS_MESSAGE', payload: 'Fase 1: Menentukan skor viralitas, hook emosional & deteksi pembicara...' });
 
     try {
-      const customApiKey = localStorage.getItem('CUSTOM_GEMINI_API_KEY');
-      const openaiKey = localStorage.getItem('OPENAI_API_KEY');
-      const openaiBaseUrl = localStorage.getItem('OPENAI_BASE_URL');
-      const openaiModel = localStorage.getItem('OPENAI_MODEL');
-      const aiProvider = localStorage.getItem('AI_PROVIDER');
+      const customApiKey = secureStorage.getItem('CUSTOM_GEMINI_API_KEY');
+      const openaiKey = secureStorage.getItem('OPENAI_API_KEY');
+      const openaiBaseUrl = secureStorage.getItem('OPENAI_BASE_URL');
+      const openaiModel = secureStorage.getItem('OPENAI_MODEL');
+      const aiProvider = secureStorage.getItem('AI_PROVIDER');
 
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (aiProvider === 'custom' && customApiKey) {
@@ -104,14 +191,14 @@ export const ClipperProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       const response = await fetch('/api/generate-clips', {
         method: 'POST',
-        headers: headers,
+        headers,
         body: JSON.stringify({
-          videoTitle: videoSource?.name || 'Video Input User',
-          genre: clipperConfig.genre,
-          clipCount: clipperConfig.clipCount,
-          targetDuration: clipperConfig.targetDuration,
-          subtitleLang: clipperConfig.subtitleLang,
-          youtubeUrl: youtubeUrlInput,
+          videoTitle: state.videoSource?.name || 'Video Input User',
+          genre: state.clipperConfig.genre,
+          clipCount: state.clipperConfig.clipCount,
+          targetDuration: state.clipperConfig.targetDuration,
+          subtitleLang: state.clipperConfig.subtitleLang,
+          youtubeUrl: state.youtubeUrlInput,
         }),
       });
 
@@ -121,61 +208,56 @@ export const ClipperProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       const data = await response.json();
 
-      setAnalysisPhase(2);
-      setAnalysisProgress(65);
-      setAnalysisStepMessage('Fase 2: Smart Crop 9:16 - Mengkalkulasi koordinat pelacakan wajah...');
+      dispatch({ type: 'SET_ANALYSIS_PHASE', payload: 2 });
+      dispatch({ type: 'SET_ANALYSIS_PROGRESS', payload: 65 });
+      dispatch({ type: 'SET_ANALYSIS_MESSAGE', payload: 'Fase 2: Smart Crop 9:16 - Mengkalkulasi koordinat pelacakan wajah...' });
 
       await new Promise((r) => setTimeout(r, 900));
-      setAnalysisProgress(90);
-      setAnalysisStepMessage('Fase 2: Mensinkronisasi subtitle karaoke multi-bahasa...');
+      dispatch({ type: 'SET_ANALYSIS_PROGRESS', payload: 90 });
+      dispatch({ type: 'SET_ANALYSIS_MESSAGE', payload: 'Fase 2: Mensinkronisasi subtitle karaoke multi-bahasa...' });
 
       await new Promise((r) => setTimeout(r, 600));
-      setAnalysisProgress(100);
-      setAnalysisStepMessage('Selesai! Klip siap disunting.');
+      dispatch({ type: 'SET_ANALYSIS_PROGRESS', payload: 100 });
+      dispatch({ type: 'SET_ANALYSIS_MESSAGE', payload: 'Selesai! Klip siap disunting.' });
 
       if (data.clips && data.clips.length > 0) {
-        setGeneratedClips(data.clips);
-        setActiveClip(data.clips[0]);
+        dispatch({ type: 'SET_GENERATED_CLIPS', payload: data.clips });
+        dispatch({ type: 'SET_ACTIVE_CLIP', payload: data.clips[0] });
       }
     } catch (err) {
       console.error('AI Analysis API call error:', err);
-      alert(`Gagal menganalisis video: ${err instanceof Error ? err.message : 'Silakan coba lagi.'}`);
+      addToast(`Gagal menganalisis video: ${err instanceof Error ? err.message : 'Silakan coba lagi.'}`, 'error');
     } finally {
       setTimeout(() => {
-        setIsAnalyzing(false);
+        dispatch({ type: 'SET_ANALYZING', payload: false });
       }, 500);
     }
-  };
+  }, [state.videoSource, state.clipperConfig, state.youtubeUrlInput, addToast]);
 
-  const selectClipForEditing = (clipId: string) => {
-    const found = generatedClips.find((c) => c.id === clipId);
+  const selectClipForEditing = useCallback((clipId: string) => {
+    const found = state.generatedClips.find((c) => c.id === clipId);
     if (found) {
-      setActiveClip(found);
-      setCurrentPage('workspace');
+      dispatch({ type: 'SET_ACTIVE_CLIP', payload: found });
     }
-  };
+  }, [state.generatedClips]);
 
-  const updateActiveClipSubtitle = (id: string, field: keyof SubtitleLine, value: any) => {
-    if (!activeClip) return;
-    const updatedSubtitles = activeClip.subtitles.map((sub) => {
-      if (sub.id === id) {
-        return { ...sub, [field]: value };
-      }
-      return sub;
-    });
+  const updateActiveClipSubtitle = useCallback(
+    (id: string, field: keyof SubtitleLine, value: any) => {
+      if (!state.activeClip) return;
+      const updatedSubtitles = state.activeClip.subtitles.map((sub) =>
+        sub.id === id ? { ...sub, [field]: value } : sub
+      );
+      dispatch({
+        type: 'UPDATE_CLIP',
+        payload: { ...state.activeClip, subtitles: updatedSubtitles },
+      });
+    },
+    [state.activeClip],
+  );
 
-    const updatedClip = { ...activeClip, subtitles: updatedSubtitles };
-    setActiveClip(updatedClip);
-
-    // Sync in list
-    setGeneratedClips((prev) =>
-      prev.map((c) => (c.id === updatedClip.id ? updatedClip : c))
-    );
-  };
-
-  const addSubtitleLine = () => {
-    if (!activeClip) return;
-    const lastSub = activeClip.subtitles[activeClip.subtitles.length - 1];
+  const addSubtitleLine = useCallback(() => {
+    if (!state.activeClip) return;
+    const lastSub = state.activeClip.subtitles[state.activeClip.subtitles.length - 1];
     const newStart = lastSub ? Number((lastSub.end + 0.2).toFixed(1)) : 0;
     const newEnd = Number((newStart + 3.0).toFixed(1));
 
@@ -187,77 +269,79 @@ export const ClipperProvider: React.FC<{ children: React.ReactNode }> = ({ child
       speaker: 'Pembicara',
     };
 
-    const updatedClip = {
-      ...activeClip,
-      subtitles: [...activeClip.subtitles, newSub],
-    };
-    setActiveClip(updatedClip);
-    setGeneratedClips((prev) =>
-      prev.map((c) => (c.id === updatedClip.id ? updatedClip : c))
-    );
-  };
+    dispatch({
+      type: 'UPDATE_CLIP',
+      payload: {
+        ...state.activeClip,
+        subtitles: [...state.activeClip.subtitles, newSub],
+      },
+    });
+  }, [state.activeClip]);
 
-  const deleteSubtitleLine = (id: string) => {
-    if (!activeClip) return;
-    const updatedSubtitles = activeClip.subtitles.filter((sub) => sub.id !== id);
-    const updatedClip = { ...activeClip, subtitles: updatedSubtitles };
-    setActiveClip(updatedClip);
-    setGeneratedClips((prev) =>
-      prev.map((c) => (c.id === updatedClip.id ? updatedClip : c))
-    );
-  };
-
-  const updateActiveClipLayout = (
-    layoutMode: LayoutMode,
-    speakerTrack?: SpeakerTrackMode
-  ) => {
-    if (!activeClip) return;
-    const updatedClip = {
-      ...activeClip,
-      layoutMode,
-      speakerTrack: speakerTrack || activeClip.speakerTrack,
-    };
-    setActiveClip(updatedClip);
-    setGeneratedClips((prev) =>
-      prev.map((c) => (c.id === updatedClip.id ? updatedClip : c))
-    );
-  };
-
-  return (
-    <ClipperContext.Provider
-      value={{
-        currentPage,
-        setCurrentPage,
-        videoSource,
-        setVideoSource,
-        youtubeUrlInput,
-        setYoutubeUrlInput,
-        clipperConfig,
-        setClipperConfig,
-        generatedClips,
-        activeClip,
-        setActiveClip,
-        captionStyle,
-        setCaptionStyle,
-        isAnalyzing,
-        analysisPhase,
-        analysisProgress,
-        analysisStepMessage,
-        exportModalOpen,
-        setExportModalOpen,
-        renderEngine,
-        setRenderEngine,
-        startAIAnalysis,
-        selectClipForEditing,
-        updateActiveClipSubtitle,
-        addSubtitleLine,
-        deleteSubtitleLine,
-        updateActiveClipLayout,
-      }}
-    >
-      {children}
-    </ClipperContext.Provider>
+  const deleteSubtitleLine = useCallback(
+    (id: string) => {
+      if (!state.activeClip) return;
+      const updatedSubtitles = state.activeClip.subtitles.filter((sub) => sub.id !== id);
+      dispatch({
+        type: 'UPDATE_CLIP',
+        payload: { ...state.activeClip, subtitles: updatedSubtitles },
+      });
+    },
+    [state.activeClip],
   );
+
+  const updateActiveClipLayout = useCallback(
+    (layoutMode: LayoutMode, speakerTrack?: SpeakerTrackMode) => {
+      if (!state.activeClip) return;
+      dispatch({
+        type: 'UPDATE_CLIP',
+        payload: {
+          ...state.activeClip,
+          layoutMode,
+          speakerTrack: speakerTrack || state.activeClip.speakerTrack,
+        },
+      });
+    },
+    [state.activeClip],
+  );
+
+  const undo = useCallback(() => dispatch({ type: 'UNDO' }), []);
+  const redo = useCallback(() => dispatch({ type: 'REDO' }), []);
+
+  const canUndo = useMemo(() => state.historyIndex > 0, [state.historyIndex]);
+  const canRedo = useMemo(() => state.historyIndex < state.history.length - 1, [state.historyIndex, state.history]);
+
+  const value = useMemo(
+    () => ({
+      state,
+      dispatch,
+      startAIAnalysis,
+      selectClipForEditing,
+      updateActiveClipSubtitle,
+      addSubtitleLine,
+      deleteSubtitleLine,
+      updateActiveClipLayout,
+      canUndo,
+      canRedo,
+      undo,
+      redo,
+    }),
+    [
+      state,
+      startAIAnalysis,
+      selectClipForEditing,
+      updateActiveClipSubtitle,
+      addSubtitleLine,
+      deleteSubtitleLine,
+      updateActiveClipLayout,
+      canUndo,
+      canRedo,
+      undo,
+      redo,
+    ],
+  );
+
+  return <ClipperContext.Provider value={value}>{children}</ClipperContext.Provider>;
 };
 
 export const useClipper = () => {

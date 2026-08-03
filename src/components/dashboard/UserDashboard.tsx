@@ -25,20 +25,10 @@ import { VideoGenre, SpeakerTrackMode } from '../../types';
 
 export const UserDashboard: React.FC = () => {
   const {
-    videoSource,
-    setVideoSource,
-    youtubeUrlInput,
-    setYoutubeUrlInput,
-    clipperConfig,
-    setClipperConfig,
+    state,
+    dispatch,
     startAIAnalysis,
-    isAnalyzing,
-    analysisPhase,
-    analysisProgress,
-    analysisStepMessage,
-    generatedClips,
     selectClipForEditing,
-    loadSampleVideo,
   } = useClipper();
 
   const [dragOver, setDragOver] = useState(false);
@@ -52,12 +42,14 @@ export const UserDashboard: React.FC = () => {
       const file = e.dataTransfer.files[0];
       if (file.type.includes('video') || file.name.endsWith('.mp4')) {
         const url = URL.createObjectURL(file);
-        setVideoSource({
-          file,
-          name: file.name,
-          url,
-          duration: 300,
-          isSample: false,
+        dispatch({
+          type: 'SET_VIDEO_SOURCE',
+          payload: {
+            file,
+            name: file.name,
+            url,
+            duration: 300,
+          },
         });
       }
     }
@@ -67,24 +59,28 @@ export const UserDashboard: React.FC = () => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       const url = URL.createObjectURL(file);
-      setVideoSource({
-        file,
-        name: file.name,
-        url,
-        duration: 300,
-        isSample: false,
+      dispatch({
+        type: 'SET_VIDEO_SOURCE',
+        payload: {
+          file,
+          name: file.name,
+          url,
+          duration: 300,
+        },
       });
     }
   };
 
   const handleYoutubeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!youtubeUrlInput) return;
-    setVideoSource({
-      name: `YouTube Video: ${youtubeUrlInput}`,
-      url: youtubeUrlInput,
-      duration: 480,
-      isSample: false,
+    if (!state.youtubeUrlInput) return;
+    dispatch({
+      type: 'SET_VIDEO_SOURCE',
+      payload: {
+        name: `YouTube Video: ${state.youtubeUrlInput}`,
+        url: state.youtubeUrlInput,
+        duration: 480,
+      },
     });
   };
 
@@ -106,13 +102,13 @@ export const UserDashboard: React.FC = () => {
           </p>
         </div>
 
-        {videoSource && (
+        {state.videoSource && (
           <div className="flex items-center gap-3 bg-zinc-900 px-4 py-2.5 rounded-xl border border-zinc-800">
             <FileVideo className="w-5 h-5 text-purple-400 shrink-0" />
             <div className="text-left">
               <span className="text-[10px] text-zinc-500 block uppercase tracking-widest font-bold">Video Aktif</span>
               <span className="text-xs font-semibold text-zinc-200 max-w-[180px] truncate block">
-                {videoSource.name}
+                {state.videoSource.name}
               </span>
             </div>
           </div>
@@ -208,8 +204,8 @@ export const UserDashboard: React.FC = () => {
                     <input
                       type="url"
                       placeholder="https://www.youtube.com/watch?v=..."
-                      value={youtubeUrlInput}
-                      onChange={(e) => setYoutubeUrlInput(e.target.value)}
+                      value={state.youtubeUrlInput}
+                      onChange={(e) => dispatch({ type: 'SET_YOUTUBE_URL', payload: e.target.value })}
                       className="w-full bg-zinc-900/50 text-xs text-white pl-10 pr-4 py-2.5 rounded-lg border border-zinc-800 focus:outline-none focus:border-purple-500/50"
                     />
                   </div>
@@ -241,12 +237,12 @@ export const UserDashboard: React.FC = () => {
                   Genre / Intent
                 </label>
                 <select
-                  value={clipperConfig.genre}
+                  value={state.clipperConfig.genre}
                   onChange={(e) =>
-                    setClipperConfig((prev) => ({
-                      ...prev,
-                      genre: e.target.value as VideoGenre,
-                    }))
+                    dispatch({
+                      type: 'SET_CONFIG',
+                      payload: { genre: e.target.value as VideoGenre },
+                    })
                   }
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-lg py-2.5 px-3 text-xs text-zinc-200 focus:outline-none focus:border-purple-500/50"
                 >
@@ -270,10 +266,10 @@ export const UserDashboard: React.FC = () => {
                       key={num}
                       type="button"
                       onClick={() =>
-                        setClipperConfig((prev) => ({ ...prev, clipCount: num }))
+                        dispatch({ type: 'SET_CONFIG', payload: { clipCount: num } })
                       }
                       className={`py-2 rounded-lg text-xs font-mono font-bold border transition-all ${
-                        clipperConfig.clipCount === num
+                        state.clipperConfig.clipCount === num
                           ? 'bg-purple-600 border-purple-500 text-white shadow-md'
                           : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
                       }`}
@@ -290,12 +286,12 @@ export const UserDashboard: React.FC = () => {
                   Target Durasi Klip
                 </label>
                 <select
-                  value={clipperConfig.targetDuration}
+                  value={state.clipperConfig.targetDuration}
                   onChange={(e) =>
-                    setClipperConfig((prev) => ({
-                      ...prev,
-                      targetDuration: e.target.value,
-                    }))
+                    dispatch({
+                      type: 'SET_CONFIG',
+                      payload: { targetDuration: e.target.value },
+                    })
                   }
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-lg py-2.5 px-3 text-xs text-zinc-200 focus:outline-none focus:border-purple-500/50"
                 >
@@ -312,12 +308,12 @@ export const UserDashboard: React.FC = () => {
                   Bahasa Subtitle Auto
                 </label>
                 <select
-                  value={clipperConfig.subtitleLang}
+                  value={state.clipperConfig.subtitleLang}
                   onChange={(e) =>
-                    setClipperConfig((prev) => ({
-                      ...prev,
-                      subtitleLang: e.target.value,
-                    }))
+                    dispatch({
+                      type: 'SET_CONFIG',
+                      payload: { subtitleLang: e.target.value },
+                    })
                   }
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-lg py-2.5 px-3 text-xs text-zinc-200 focus:outline-none focus:border-purple-500/50"
                 >
@@ -344,13 +340,13 @@ export const UserDashboard: React.FC = () => {
                       key={mode.id}
                       type="button"
                       onClick={() =>
-                        setClipperConfig((prev) => ({
-                          ...prev,
-                          speakerTrackMode: mode.id as SpeakerTrackMode,
-                        }))
+                        dispatch({
+                          type: 'SET_CONFIG',
+                          payload: { speakerTrackMode: mode.id as SpeakerTrackMode },
+                        })
                       }
                       className={`p-2.5 rounded-lg text-xs font-medium border transition-all text-center ${
-                        clipperConfig.speakerTrackMode === mode.id
+                        state.clipperConfig.speakerTrackMode === mode.id
                           ? 'bg-purple-600/30 border-purple-500/80 text-purple-200 font-semibold'
                           : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
                       }`}
@@ -367,7 +363,7 @@ export const UserDashboard: React.FC = () => {
             <div className="pt-2">
               <button
                 onClick={startAIAnalysis}
-                disabled={isAnalyzing}
+                disabled={state.isAnalyzing}
                 className="w-full py-3.5 bg-purple-600 hover:bg-purple-500 text-white font-semibold shadow-lg shadow-purple-900/20 rounded-xl transition-all hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2.5 disabled:opacity-50 text-sm"
               >
                 <Zap className="w-4 h-4 fill-white" />
@@ -387,10 +383,10 @@ export const UserDashboard: React.FC = () => {
             <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
               <h3 className="text-xs uppercase tracking-widest font-bold text-zinc-400 flex items-center gap-2">
                 <Flame className="w-4 h-4 text-amber-400" />
-                <span>Hasil Klip AI ({generatedClips.length})</span>
+                <span>Hasil Klip AI ({state.generatedClips.length})</span>
               </h3>
 
-              {generatedClips.length > 0 && (
+              {state.generatedClips.length > 0 && (
                 <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-800">
                   Ready
                 </span>
@@ -398,7 +394,7 @@ export const UserDashboard: React.FC = () => {
             </div>
 
             {/* Empty State */}
-            {generatedClips.length === 0 && !isAnalyzing && (
+            {state.generatedClips.length === 0 && !state.isAnalyzing && (
               <div className="text-center py-12 px-4 border-2 border-dashed border-zinc-800 rounded-xl bg-zinc-900/20">
                 <div className="w-12 h-12 rounded-xl bg-zinc-800 text-zinc-400 flex items-center justify-center mx-auto mb-3">
                   <Sparkles className="w-6 h-6 text-purple-400" />
@@ -411,9 +407,9 @@ export const UserDashboard: React.FC = () => {
             )}
 
             {/* Generated Clip List */}
-            {generatedClips.length > 0 && !isAnalyzing && (
+            {state.generatedClips.length > 0 && !state.isAnalyzing && (
               <div className="space-y-4 max-h-[600px] overflow-y-auto pr-1">
-                {generatedClips.map((clip) => (
+                {state.generatedClips.map((clip) => (
                   <div
                     key={clip.id}
                     className="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 hover:border-purple-500/50 transition-all space-y-3 group"
@@ -468,7 +464,7 @@ export const UserDashboard: React.FC = () => {
       </div>
 
       {/* TWO-PHASE REAL-TIME PROCESSING MODAL */}
-      {isAnalyzing && (
+      {state.isAnalyzing && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
           <div className="bg-[#0c0c0e] border border-zinc-800 p-8 rounded-2xl max-w-lg w-full text-center space-y-6 shadow-2xl relative overflow-hidden">
             
@@ -476,7 +472,7 @@ export const UserDashboard: React.FC = () => {
             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-600 via-blue-500 to-cyan-400" />
 
             <div className="w-14 h-14 rounded-xl bg-purple-600/20 text-purple-400 border border-purple-500/30 flex items-center justify-center mx-auto animate-pulse">
-              {analysisPhase === 1 ? (
+              {state.analysisPhase === 1 ? (
                 <BrainCircuit className="w-7 h-7 text-purple-400" />
               ) : (
                 <Cpu className="w-7 h-7 text-cyan-400" />
@@ -485,13 +481,13 @@ export const UserDashboard: React.FC = () => {
 
             <div>
               <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-purple-400 bg-purple-950/80 px-3 py-1 rounded-full border border-purple-800">
-                FASE {analysisPhase}: {analysisPhase === 1 ? 'AI THINKING (GEMINI)' : 'RENDER & SMART CROP'}
+                FASE {state.analysisPhase}: {state.analysisPhase === 1 ? 'AI THINKING (GEMINI)' : 'RENDER & SMART CROP'}
               </span>
               <h3 className="text-lg font-bold text-white mt-3">
                 Memproses Klip Video Otomatis...
               </h3>
               <p className="text-xs text-zinc-400 mt-1 min-h-[36px]">
-                {analysisStepMessage}
+                {state.analysisStepMessage}
               </p>
             </div>
 
@@ -499,23 +495,23 @@ export const UserDashboard: React.FC = () => {
             <div className="space-y-2">
               <div className="flex justify-between text-xs font-mono text-zinc-400">
                 <span>AI PROGRESS</span>
-                <span className="text-purple-400 font-bold">{analysisProgress}%</span>
+                <span className="text-purple-400 font-bold">{state.analysisProgress}%</span>
               </div>
               <div className="w-full h-2.5 bg-zinc-900 rounded-full overflow-hidden p-0.5 border border-zinc-800">
                 <div
                   className="h-full bg-gradient-to-r from-purple-600 to-blue-500 rounded-full transition-all duration-300"
-                  style={{ width: `${analysisProgress}%` }}
+                  style={{ width: `${state.analysisProgress}%` }}
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3 text-[11px] text-zinc-400 text-left pt-2 border-t border-zinc-800 font-mono">
               <div className="flex items-center gap-1.5">
-                <CheckCircle2 className={`w-3.5 h-3.5 ${analysisPhase >= 1 ? 'text-emerald-400' : 'text-zinc-600'}`} />
+                <CheckCircle2 className={`w-3.5 h-3.5 ${state.analysisPhase >= 1 ? 'text-emerald-400' : 'text-zinc-600'}`} />
                 <span>Transkrip & Viral Hook</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <CheckCircle2 className={`w-3.5 h-3.5 ${analysisProgress >= 65 ? 'text-emerald-400' : 'text-zinc-600'}`} />
+                <CheckCircle2 className={`w-3.5 h-3.5 ${state.analysisProgress >= 65 ? 'text-emerald-400' : 'text-zinc-600'}`} />
                 <span>Smart Crop Face Track</span>
               </div>
             </div>

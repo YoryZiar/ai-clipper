@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useClipper } from '../../context/ClipperContext';
+import { useNavigate } from 'react-router-dom';
 import {
   BrainCircuit,
   Cpu,
@@ -9,7 +9,6 @@ import {
   Sparkles,
   Zap,
   CheckCircle2,
-  Play,
   ArrowRight,
   Video,
   FileVideo,
@@ -23,13 +22,8 @@ import {
 } from 'lucide-react';
 
 export const LandingPage: React.FC = () => {
-  const { setCurrentPage, loadSampleVideo, startAIAnalysis } = useClipper();
+  const navigate = useNavigate();
   const [activeDemoTab, setActiveDemoTab] = useState<'smartcrop' | 'subtitles' | 'twophase'>('twophase');
-
-  const handleTestDemo = () => {
-    loadSampleVideo(0);
-    setCurrentPage('dashboard');
-  };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 pb-20 selection:bg-purple-500 selection:text-white">
@@ -66,19 +60,11 @@ export const LandingPage: React.FC = () => {
           {/* Call To Action Buttons */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-14">
             <button
-              onClick={() => setCurrentPage('dashboard')}
+              onClick={() => navigate('/dashboard')}
               className="w-full sm:w-auto flex items-center justify-center gap-3 px-8 py-4 bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-500 hover:from-purple-500 hover:to-cyan-400 text-white font-bold text-base rounded-2xl shadow-xl shadow-purple-600/30 transition-all hover:scale-105 active:scale-95"
             >
               <Zap className="w-5 h-5 fill-white" />
               <span>Coba Generator AI Sekarang</span>
-            </button>
-
-            <button
-              onClick={handleTestDemo}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-7 py-4 bg-slate-900/90 hover:bg-slate-800 text-slate-200 font-semibold text-base rounded-2xl border border-slate-700 hover:border-purple-500/50 transition-all"
-            >
-              <Play className="w-4 h-4 text-cyan-400 fill-cyan-400" />
-              <span>Uji Coba dengan Sample Video</span>
             </button>
           </div>
 
@@ -348,7 +334,7 @@ export const LandingPage: React.FC = () => {
               Unggah berkas MP4 lokal Anda atau tempelkan tautan YouTube untuk memulainya secara otomatis.
             </p>
             <button
-              onClick={() => setCurrentPage('dashboard')}
+              onClick={() => navigate('/dashboard')}
               className="inline-flex items-center gap-2 px-8 py-3.5 bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-black text-sm rounded-xl shadow-lg shadow-cyan-400/20 transition-all hover:scale-105"
             >
               <span>Buka Dashboard Generator</span>

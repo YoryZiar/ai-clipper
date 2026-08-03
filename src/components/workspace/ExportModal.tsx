@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { FFmpeg } from '@ffmpeg/ffmpeg';
+import { fetchFile, toBlobURL } from '@ffmpeg/util';
 import { useClipper } from '../../context/ClipperContext';
+import { useToast } from '../../context/ToastContext';
 import {
   Download,
   X,
   Layers,
   CloudLightning,
   ShieldCheck,
-  CheckCircle2,
-  Sparkles,
   Zap,
   Film,
   FileCheck,
@@ -15,14 +16,8 @@ import {
 import { RenderEngine } from '../../types';
 
 export const ExportModal: React.FC = () => {
-  const {
-    exportModalOpen,
-    setExportModalOpen,
-    activeClip,
-    renderEngine,
-    setRenderEngine,
-    videoSource,
-  } = useClipper();
+  const { state, dispatch } = useClipper();
+  const { addToast } = useToast();
 
   const [resolution, setResolution] = useState<'1080p' | '4k'>('1080p');
   const [fps, setFps] = useState<30 | 60>(60);
@@ -31,29 +26,135 @@ export const ExportModal: React.FC = () => {
   const [exportComplete, setExportComplete] = useState(false);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
 
-  if (!exportModalOpen || !activeClip) return null;
+  const ffmpegRef = useRef(new FFmpeg());
+  const loaded = useRef(false);
+  const [ffmpegLoaded, setFfmpegLoaded] = useState(false);
+
+  useEffect(() => {
+    if (loaded.current) return;
+    loaded.current = true;
+
+    const load = async () => {
+      const ffmpeg = ffmpegRef.current;
+      ffmpeg.on('log', ({ message }) => console.log(message));
+      const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+      await ffmpeg.load({
+        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+      });
+      setFfmpegLoaded(true);
+    };
+    load();
+  }, []);
+
+  if (!state.exportModalOpen || !state.activeClip) return null;
 
   const handleStartExport = async () => {
     setIsExporting(true);
-    setExportProgress(5);
+    setExportProgress(0);
     setExportComplete(false);
 
-    // Simulate rendering frame-by-frame
-    for (let i = 10; i <= 100; i += 10) {
-      await new Promise((r) => setTimeout(r, 250));
-      setExportProgress(i);
+    if (state.renderEngine === 'remotion-aws') {
+      for (let i = 10; i <= 100; i += 10) {
+        await new Promise((r) => setTimeout(r, 250));
+        setExportProgress(i);
+      }
+      setIsExporting(false);
+      setExportComplete(true);
+      setDownloadUrl(state.videoSource?.url || '#');
+      return;
     }
 
-    setIsExporting(false);
-    setExportComplete(true);
-    // Use the active video URL or a blob URL as download target
-    setDownloadUrl(videoSource?.url || '#');
+    const ffmpeg = ffmpegRef.current;
+    const progressHandler = ({ progress }: { progress: number }) => {
+      const pct = Math.round(progress * 100);
+      setExportProgress(Math.max(20, Math.min(95, 20 + pct * 0.75)));
+    };
+
+    try {
+      if (!ffmpeg.loaded) {
+        setExportProgress(5);
+        await new Promise<void>((resolve) => {
+          const check = () => {
+            if (ffmpegLoaded) resolve();
+            else setTimeout(check, 100);
+          };
+          check();
+        });
+      }
+
+      setExportProgress(10);
+
+      const clip = state.activeClip!;
+      const startSeconds = clip.startSeconds;
+      const clipDuration = clip.endSeconds - clip.startSeconds;
+      const targetWidth = resolution === '4k' ? 2160 : 1080;
+      const targetHeight = resolution === '4k' ? 3840 : 1920;
+
+      let inputData: Uint8Array;
+      if (state.videoSource?.file) {
+        inputData = await fetchFile(state.videoSource.file);
+      } else if (state.videoSource?.url) {
+        inputData = await fetchFile(state.videoSource.url);
+      } else {
+        throw new Error('No video source available');
+      }
+
+      setExportProgress(15);
+      await ffmpeg.writeFile('input.mp4', inputData);
+
+      setExportProgress(20);
+
+      ffmpeg.on('progress', progressHandler);
+
+      const filterGraph = `crop=ih*9/16:ih,scale=${targetWidth}:${targetHeight}`;
+
+      await ffmpeg.exec([
+        '-i', 'input.mp4',
+        '-ss', String(startSeconds),
+        '-t', String(clipDuration),
+        '-vf', filterGraph,
+        '-c:v', 'libx264',
+        '-preset', 'medium',
+        '-crf', '23',
+        '-c:a', 'aac',
+        '-b:a', '128k',
+        '-r', String(fps),
+        'output.mp4',
+      ]);
+
+      setExportProgress(95);
+
+      const outputData = await ffmpeg.readFile('output.mp4');
+      const blob = new Blob([outputData], { type: 'video/mp4' });
+      const url = URL.createObjectURL(blob);
+
+      setExportProgress(100);
+      setIsExporting(false);
+      setExportComplete(true);
+      setDownloadUrl(url);
+    } catch (err) {
+      console.error('FFmpeg export error:', err);
+      addToast(
+        `Gagal render: ${err instanceof Error ? err.message : 'Error tidak diketahui'}`,
+        'error',
+      );
+      setIsExporting(false);
+      setExportComplete(false);
+    } finally {
+      ffmpeg.off('progress', progressHandler);
+      ffmpeg.deleteFile('input.mp4').catch(() => {});
+      ffmpeg.deleteFile('output.mp4').catch(() => {});
+    }
   };
 
   const handleReset = () => {
     setIsExporting(false);
     setExportProgress(0);
     setExportComplete(false);
+    if (downloadUrl && downloadUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(downloadUrl);
+    }
     setDownloadUrl(null);
   };
 
@@ -80,7 +181,7 @@ export const ExportModal: React.FC = () => {
           <button
             onClick={() => {
               handleReset();
-              setExportModalOpen(false);
+              dispatch({ type: 'SET_EXPORT_MODAL', payload: false });
             }}
             className="p-1.5 rounded-xl bg-zinc-900 text-zinc-400 hover:text-white transition-all border border-zinc-800"
           >
@@ -93,11 +194,11 @@ export const ExportModal: React.FC = () => {
           <div className="flex items-center gap-2.5">
             <Film className="w-4 h-4 text-purple-400" />
             <span className="text-xs font-bold text-zinc-200 max-w-[240px] truncate">
-              {activeClip.title}
+              {state.activeClip.title}
             </span>
           </div>
           <span className="text-[11px] font-mono text-purple-400 font-bold bg-purple-950/80 px-2 py-0.5 rounded border border-purple-800">
-            {activeClip.durationText}
+              {state.activeClip.durationText}
           </span>
         </div>
 
@@ -113,9 +214,9 @@ export const ExportModal: React.FC = () => {
                 
                 {/* Option 1: FFmpeg.wasm */}
                 <div
-                  onClick={() => setRenderEngine('ffmpeg-wasm')}
+                  onClick={() => dispatch({ type: 'SET_RENDER_ENGINE', payload: 'ffmpeg-wasm' })}
                   className={`cursor-pointer p-4 rounded-xl border transition-all text-left space-y-1.5 ${
-                    renderEngine === 'ffmpeg-wasm'
+                    state.renderEngine === 'ffmpeg-wasm'
                       ? 'bg-purple-950/40 border-purple-500 shadow-md'
                       : 'bg-zinc-900/50 border-zinc-800 hover:border-zinc-700'
                   }`}
@@ -135,9 +236,9 @@ export const ExportModal: React.FC = () => {
 
                 {/* Option 2: Remotion AWS Lambda */}
                 <div
-                  onClick={() => setRenderEngine('remotion-aws')}
+                  onClick={() => dispatch({ type: 'SET_RENDER_ENGINE', payload: 'remotion-aws' })}
                   className={`cursor-pointer p-4 rounded-xl border transition-all text-left space-y-1.5 ${
-                    renderEngine === 'remotion-aws'
+                    state.renderEngine === 'remotion-aws'
                       ? 'bg-purple-950/40 border-purple-500 shadow-md'
                       : 'bg-zinc-900/50 border-zinc-800 hover:border-zinc-700'
                   }`}
@@ -230,7 +331,7 @@ export const ExportModal: React.FC = () => {
             {isExporting ? (
               <div className="space-y-3 pt-2">
                 <div className="flex justify-between text-xs font-mono text-zinc-400">
-                  <span>MEMPROSES FRAME ({renderEngine})...</span>
+                  <span>MEMPROSES FRAME ({state.renderEngine})...</span>
                   <span className="text-purple-400 font-bold">{exportProgress}%</span>
                 </div>
                 <div className="w-full h-2.5 bg-zinc-900 rounded-full overflow-hidden p-0.5 border border-zinc-800">
@@ -267,7 +368,7 @@ export const ExportModal: React.FC = () => {
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <a
                 href={downloadUrl || '#'}
-                download={`${activeClip.title.replace(/\s+/g, '_')}_916.mp4`}
+                download={`${state.activeClip.title.replace(/\s+/g, '_')}_916.mp4`}
                 className="flex items-center justify-center gap-2 px-6 py-3 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs rounded-xl shadow-lg transition-all"
               >
                 <Download className="w-4 h-4" />

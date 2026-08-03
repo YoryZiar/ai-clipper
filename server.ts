@@ -4,11 +4,39 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import OpenAI from "openai";
 import dotenv from "dotenv";
+import rateLimit from "express-rate-limit";
+import helmet from "helmet";
+import cors from "cors";
+import { execFile } from "child_process";
+import { promisify } from "util";
+
+const execFileAsync = promisify(execFile);
 
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = parseInt(process.env.PORT || '3000', 10);
+
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:", "blob:"],
+      mediaSrc: ["'self'", "blob:", "https:"],
+      connectSrc: ["'self'", "ws:", "wss:", "https:"],
+      fontSrc: ["'self'", "data:"],
+    },
+  },
+}));
+
+app.use(cors({
+  origin: process.env.APP_URL || true,
+  methods: ["GET", "POST"],
+  credentials: true,
+}));
 
 app.use(express.json({ limit: "50mb" }));
 
@@ -39,17 +67,53 @@ app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
+// Rate limiter for AI generation endpoint
+const generateClipsLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Terlalu banyak permintaan. Silakan coba lagi nanti." },
+});
+
+const youtubeInfoLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests. Please try again later." },
+});
+
+const VALID_GENRES = ["Podcast", "Gaming", "Edukasi", "Tech Review", "Bisnis", "Umum"];
+const VALID_TARGET_DURATIONS = ["15-30s", "30-45s", "45-60s", "60-90s"];
+const VALID_LANGUAGES = ["Indonesian", "English", "Japanese", "Spanish"];
+const VALID_LAYOUT_MODES = ["smart-crop-916", "split-screen", "center-fit", "blurred-bg"];
+const VALID_SPEAKER_TRACKS = ["speaker-a", "speaker-b", "auto-switch", "center-fixed"];
+
+function sanitizeInput(input: string, maxLength: number = 2000): string {
+  if (typeof input !== "string") return "";
+  return input.slice(0, maxLength).replace(/<\/?[^>]+(>|$)/g, "");
+}
+
 // AI Generate Video Clips Endpoint
-app.post("/api/generate-clips", async (req, res) => {
+app.post("/api/generate-clips", generateClipsLimiter, async (req, res) => {
   const {
-    videoTitle = "Video Tanpa Judul",
-    genre = "Podcast",
-    clipCount = 3,
-    targetDuration = "45-60s",
-    subtitleLang = "Indonesian",
-    youtubeUrl = "",
-    transcriptText = "",
-  } = req.body;
+    videoTitle: rawTitle,
+    genre: rawGenre,
+    clipCount: rawClipCount,
+    targetDuration: rawDuration,
+    subtitleLang: rawLang,
+    youtubeUrl: rawYoutubeUrl,
+    transcriptText: rawTranscript,
+  } = req.body || {};
+
+  const videoTitle = sanitizeInput(rawTitle || "Video Tanpa Judul", 200);
+  const genre = VALID_GENRES.includes(rawGenre) ? rawGenre : "Podcast";
+  const clipCount = Math.min(Math.max(parseInt(String(rawClipCount), 10) || 3, 1), 10);
+  const targetDuration = VALID_TARGET_DURATIONS.includes(rawDuration) ? rawDuration : "45-60s";
+  const subtitleLang = VALID_LANGUAGES.includes(rawLang) ? rawLang : "Indonesian";
+  const youtubeUrl = sanitizeInput(rawYoutubeUrl || "", 500);
+  const transcriptText = sanitizeInput(rawTranscript || "", 4000);
 
   const aiProvider = req.headers["x-ai-provider"] as string | undefined;
   
@@ -219,6 +283,79 @@ Pastikan setiap klip memiliki:
 
   // If we reach here, it means neither API returned clips successfully and we haven't already returned an error.
   return res.status(500).json({ error: "Gagal menghasilkan klip dari AI Provider." });
+});
+
+const YOUTUBE_URL_PATTERN = /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/|youtube\.com\/embed\/|m\.youtube\.com\/watch\?v=)[\w-]{11}.*$/i;
+
+function isValidYouTubeUrl(url: string): boolean {
+  return YOUTUBE_URL_PATTERN.test(url);
+}
+
+async function checkYtDlpAvailable(): Promise<boolean> {
+  try {
+    await execFileAsync("yt-dlp", ["--version"], { timeout: 5000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+interface YouTubeVideoInfo {
+  title: string;
+  duration: number;
+  thumbnail: string;
+  url: string;
+  uploader: string;
+}
+
+app.post("/api/youtube-info", youtubeInfoLimiter, async (req, res) => {
+  try {
+    const { youtubeUrl } = req.body || {};
+
+    if (!youtubeUrl || typeof youtubeUrl !== "string" || !isValidYouTubeUrl(youtubeUrl.trim())) {
+      return res.status(400).json({ error: "Invalid YouTube URL" });
+    }
+
+    const ytDlpAvailable = await checkYtDlpAvailable();
+    if (!ytDlpAvailable) {
+      return res.status(501).json({ error: "yt-dlp is not installed on the server" });
+    }
+
+    try {
+      const { stdout } = await execFileAsync(
+        "yt-dlp",
+        ["--dump-json", "--no-playlist", youtubeUrl.trim()],
+        { timeout: 30000, maxBuffer: 10 * 1024 * 1024 }
+      );
+
+      const info = JSON.parse(stdout);
+
+      const result: YouTubeVideoInfo = {
+        title: info.title || "",
+        duration: info.duration || 0,
+        thumbnail: info.thumbnail || info.thumbnails?.[info.thumbnails.length - 1]?.url || "",
+        url: info.url || info.webpage_url || youtubeUrl,
+        uploader: info.uploader || info.channel || "",
+      };
+
+      return res.json(result);
+    } catch (err: any) {
+      console.error("yt-dlp execution error:", err);
+      return res.status(500).json({ error: err.message || "Failed to fetch YouTube video info" });
+    }
+  } catch (err: any) {
+    console.error("youtube-info endpoint error:", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/api/youtube-info/available", async (_req, res) => {
+  try {
+    const available = await checkYtDlpAvailable();
+    return res.json({ available });
+  } catch {
+    return res.json({ available: false });
+  }
 });
 
 // Start Server with Vite Middleware

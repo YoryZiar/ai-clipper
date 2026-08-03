@@ -34,8 +34,7 @@ export interface VideoSource {
   file?: File;
   name: string;
   url: string;
-  duration: number; // total duration in seconds
-  isSample?: boolean;
+  duration: number;
   thumbnailUrl?: string;
 }
 
