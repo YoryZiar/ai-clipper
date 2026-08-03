@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Save, Key, Server, CheckCircle2, AlertCircle, Link, Cpu } from 'lucide-react';
+import { secureStorage } from '../../utils/secureStorage';
 
 export const SettingsPage: React.FC = () => {
   const [geminiKey, setGeminiKey] = useState('');
@@ -10,11 +11,11 @@ export const SettingsPage: React.FC = () => {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    const savedGeminiKey = localStorage.getItem('CUSTOM_GEMINI_API_KEY') || '';
-    const savedOpenaiKey = localStorage.getItem('OPENAI_API_KEY') || '';
-    const savedOpenaiBaseUrl = localStorage.getItem('OPENAI_BASE_URL') || '';
-    const savedOpenaiModel = localStorage.getItem('OPENAI_MODEL') || '';
-    const savedProvider = localStorage.getItem('AI_PROVIDER') || 'google';
+    const savedGeminiKey = secureStorage.getItem('CUSTOM_GEMINI_API_KEY');
+    const savedOpenaiKey = secureStorage.getItem('OPENAI_API_KEY');
+    const savedOpenaiBaseUrl = secureStorage.getItem('OPENAI_BASE_URL');
+    const savedOpenaiModel = secureStorage.getItem('OPENAI_MODEL');
+    const savedProvider = secureStorage.getItem('AI_PROVIDER') || 'google';
     setGeminiKey(savedGeminiKey);
     setOpenaiKey(savedOpenaiKey);
     setOpenaiBaseUrl(savedOpenaiBaseUrl);
@@ -23,11 +24,11 @@ export const SettingsPage: React.FC = () => {
   }, []);
 
   const handleSave = () => {
-    localStorage.setItem('CUSTOM_GEMINI_API_KEY', geminiKey);
-    localStorage.setItem('OPENAI_API_KEY', openaiKey);
-    localStorage.setItem('OPENAI_BASE_URL', openaiBaseUrl);
-    localStorage.setItem('OPENAI_MODEL', openaiModel);
-    localStorage.setItem('AI_PROVIDER', provider);
+    secureStorage.setItem('CUSTOM_GEMINI_API_KEY', geminiKey);
+    secureStorage.setItem('OPENAI_API_KEY', openaiKey);
+    secureStorage.setItem('OPENAI_BASE_URL', openaiBaseUrl);
+    secureStorage.setItem('OPENAI_MODEL', openaiModel);
+    secureStorage.setItem('AI_PROVIDER', provider);
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
   };
