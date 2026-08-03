@@ -5,10 +5,10 @@ import { ToastProvider } from './context/ToastContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { HeaderNav } from './components/HeaderNav';
 
-const LandingPage = React.lazy(() => import('./components/landing/LandingPage'));
-const UserDashboard = React.lazy(() => import('./components/dashboard/UserDashboard'));
-const VideoWorkspace = React.lazy(() => import('./components/workspace/VideoWorkspace'));
-const SettingsPage = React.lazy(() => import('./components/settings/SettingsPage'));
+const LandingPage = React.lazy(() => import('./components/landing/LandingPage').then(m => ({ default: m.LandingPage })));
+const UserDashboard = React.lazy(() => import('./components/dashboard/UserDashboard').then(m => ({ default: m.UserDashboard })));
+const VideoWorkspace = React.lazy(() => import('./components/workspace/VideoWorkspace').then(m => ({ default: m.VideoWorkspace })));
+const SettingsPage = React.lazy(() => import('./components/settings/SettingsPage').then(m => ({ default: m.SettingsPage })));
 
 function PageLoader() {
   return (

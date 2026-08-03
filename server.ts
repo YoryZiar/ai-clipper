@@ -17,6 +17,11 @@ dotenv.config();
 const app = express();
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
+const SERVER_GEMINI_KEY = process.env.GEMINI_API_KEY;
+const SERVER_OPENAI_KEY = process.env.OPENAI_API_KEY;
+const SERVER_OPENAI_BASE_URL = process.env.OPENAI_BASE_URL || "https://kenari.id/v1";
+const DEFAULT_OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5-6-luna";
+
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
   contentSecurityPolicy: {
@@ -42,7 +47,7 @@ app.use(express.json({ limit: "50mb" }));
 
 // Helper to initialize Gemini SDK safely
 function getGeminiClient(customApiKey?: string) {
-  const apiKey = customApiKey || process.env.GEMINI_API_KEY;
+  const apiKey = customApiKey || SERVER_GEMINI_KEY;
   if (!apiKey) return null;
   return new GoogleGenAI({
     apiKey,
@@ -65,6 +70,18 @@ function getOpenAIClient(apiKey: string, baseURL?: string) {
 // Health check endpoint
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+// AI Configuration status endpoint
+app.get("/api/ai-config", (_req, res) => {
+  const configuredProvider = (SERVER_GEMINI_KEY || SERVER_OPENAI_KEY) ? "server" : "client";
+  res.json({
+    configuredProvider,
+    serverHasGemini: !!SERVER_GEMINI_KEY,
+    serverHasOpenAI: !!SERVER_OPENAI_KEY,
+    defaultModel: DEFAULT_OPENAI_MODEL,
+    baseUrl: SERVER_OPENAI_BASE_URL,
+  });
 });
 
 // Rate limiter for AI generation endpoint
@@ -133,16 +150,16 @@ Pastikan setiap klip memiliki:
 - Mode tata letak 9:16 yang disarankan (smart-crop-916, split-screen, center-fit, blurred-bg)`;
 
   if (aiProvider === 'openai') {
-    const openaiKey = req.headers["x-openai-api-key"] as string | undefined;
-    const openaiBaseUrl = req.headers["x-openai-base-url"] as string | undefined;
-    const openaiModel = req.headers["x-openai-model"] as string | undefined;
+    const openaiKey = (req.headers["x-openai-api-key"] as string | undefined) || SERVER_OPENAI_KEY;
+    const openaiBaseUrl = (req.headers["x-openai-base-url"] as string | undefined) || SERVER_OPENAI_BASE_URL;
+    const openaiModel = (req.headers["x-openai-model"] as string | undefined) || DEFAULT_OPENAI_MODEL;
     
     if (openaiKey) {
       const openai = getOpenAIClient(openaiKey, openaiBaseUrl);
       if (openai) {
         try {
           const response = await openai.chat.completions.create({
-            model: openaiModel || 'gpt-4o-mini',
+            model: openaiModel || DEFAULT_OPENAI_MODEL,
             response_format: { type: "json_object" },
             messages: [
               {
@@ -183,10 +200,16 @@ Pastikan setiap klip memiliki:
             ],
           });
           
-          if (response.choices[0].message.content) {
-            const parsed = JSON.parse(response.choices[0].message.content);
-            if (parsed.clips && parsed.clips.length > 0) {
-              return res.json({ source: "openai", clips: parsed.clips });
+          const content = response.choices[0]?.message?.content || (response.choices[0]?.message as any)?.reasoning_content || "";
+          if (content) {
+            try {
+              const parsed = JSON.parse(content);
+              if (parsed.clips && parsed.clips.length > 0) {
+                return res.json({ source: "openai", clips: parsed.clips });
+              }
+            } catch (jsonErr: any) {
+              console.error("OpenAI response JSON parse error:", jsonErr);
+              return res.status(500).json({ error: "Respons JSON dari OpenAI tidak valid." });
             }
           }
         } catch (err: any) {
@@ -197,7 +220,7 @@ Pastikan setiap klip memiliki:
     }
   } else {
     // Default to Gemini
-    const customApiKey = req.headers["x-custom-gemini-api-key"] as string | undefined;
+    const customApiKey = (req.headers["x-custom-gemini-api-key"] as string | undefined) || SERVER_GEMINI_KEY;
     const ai = getGeminiClient(customApiKey);
 
     if (ai) {

@@ -126,6 +126,7 @@ const initialState: ClipDataState = {
     subtitleLang: 'Indonesian',
     speakerTrackMode: 'auto-switch',
     layoutMode: 'smart-crop-916',
+    transcriptText: '',
   },
   generatedClips: [],
   activeClip: null,
@@ -199,6 +200,7 @@ export const ClipperProvider: React.FC<{ children: React.ReactNode }> = ({ child
           targetDuration: state.clipperConfig.targetDuration,
           subtitleLang: state.clipperConfig.subtitleLang,
           youtubeUrl: state.youtubeUrlInput,
+          transcriptText: state.clipperConfig.transcriptText || '',
         }),
       });
 

@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useClipper } from '../../context/ClipperContext';
+import { useToast } from '../../context/ToastContext';
+import { transcribeAudioFromVideo } from '../../utils/transcribe';
 import {
   Upload,
   Youtube,
@@ -20,6 +22,9 @@ import {
   Tag,
   Scissors,
   Layers,
+  Loader2,
+  Mic,
+  FileText,
 } from 'lucide-react';
 import { VideoGenre, SpeakerTrackMode } from '../../types';
 
@@ -31,8 +36,46 @@ export const UserDashboard: React.FC = () => {
     selectClipForEditing,
   } = useClipper();
 
+  const { addToast } = useToast();
   const [dragOver, setDragOver] = useState(false);
   const [activeInputTab, setActiveInputTab] = useState<'upload' | 'youtube'>('upload');
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [transcribeProgress, setTranscribeProgress] = useState('');
+
+  const handleAutoTranscribe = async () => {
+    if (!state.videoSource?.file) {
+      addToast('Silakan pilih atau unggah berkas MP4 lokal terlebih dahulu.', 'warning');
+      return;
+    }
+
+    setIsTranscribing(true);
+    setTranscribeProgress('Memulai analisis & transkripsi audio...');
+
+    try {
+      const resultText = await transcribeAudioFromVideo(
+        state.videoSource.file,
+        state.clipperConfig.subtitleLang,
+        (partial) => {
+          setTranscribeProgress(partial || 'Mentranskripsi audio...');
+          dispatch({
+            type: 'SET_CONFIG',
+            payload: { transcriptText: partial },
+          });
+        }
+      );
+      dispatch({
+        type: 'SET_CONFIG',
+        payload: { transcriptText: resultText },
+      });
+      addToast('Transkripsi otomatis berhasil diselesaikan.', 'success');
+    } catch (err: any) {
+      console.error('Auto-transcription error:', err);
+      addToast(err.message || 'Gagal melakukan transkripsi otomatis.', 'error');
+    } finally {
+      setIsTranscribing(false);
+      setTranscribeProgress('');
+    }
+  };
 
   // Handle local file drop
   const handleDrop = (e: React.DragEvent) => {
@@ -155,7 +198,7 @@ export const UserDashboard: React.FC = () => {
 
             {/* TAB: Upload Local MP4 */}
             {activeInputTab === 'upload' && (
-              <div>
+              <div className="space-y-4">
                 <div
                   onDragOver={(e) => {
                     e.preventDefault();
@@ -188,6 +231,54 @@ export const UserDashboard: React.FC = () => {
                       onChange={handleFileInput}
                     />
                   </label>
+                </div>
+
+                {/* Transkrip / Deskripsi Auto Input Section */}
+                <div className="pt-2 space-y-2 border-t border-zinc-800/80">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs text-zinc-300 font-medium flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5 text-purple-400" />
+                      <span>Transkrip Video</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleAutoTranscribe}
+                      disabled={isTranscribing}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-900/40 hover:bg-purple-900/70 border border-purple-500/50 text-purple-200 text-xs font-semibold rounded-lg transition-all disabled:opacity-50"
+                    >
+                      {isTranscribing ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-300" />
+                          <span>Mentranskripsi...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                          <span>Transkrip Otomatis</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {isTranscribing && (
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-950/40 border border-purple-800/50 rounded-lg text-[11px] text-purple-300 font-mono">
+                      <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+                      <span className="truncate">{transcribeProgress}</span>
+                    </div>
+                  )}
+
+                  <textarea
+                    rows={3}
+                    placeholder="Transkrip video akan muncul secara otomatis setelah mengklik 'Transkrip Otomatis' atau dapat diisi manual..."
+                    value={state.clipperConfig.transcriptText || ''}
+                    onChange={(e) =>
+                      dispatch({
+                        type: 'SET_CONFIG',
+                        payload: { transcriptText: e.target.value },
+                      })
+                    }
+                    className="w-full bg-zinc-900/50 text-xs text-white p-3 rounded-lg border border-zinc-800 focus:outline-none focus:border-purple-500/50 leading-relaxed resize-none"
+                  />
                 </div>
               </div>
             )}

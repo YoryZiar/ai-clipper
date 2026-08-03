@@ -6,3 +6,12 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Scratch test files
+test-react-player-3.js
+test-react-player-ref.js
+test-react-player-ref.jsx
+test-react-player.js
+test-react-player.jsx
+test-rp-client.html
+test-rp.jsx

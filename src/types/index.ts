@@ -45,6 +45,7 @@ export interface ClipperConfig {
   subtitleLang: string;
   speakerTrackMode: SpeakerTrackMode;
   layoutMode: LayoutMode;
+  transcriptText?: string;
 }
 
 export interface CaptionStyle {
