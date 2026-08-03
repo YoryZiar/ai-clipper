@@ -1,5 +1,4 @@
 import express from "express";
-import path from "path";
 import { GoogleGenAI, Type } from "@google/genai";
 import OpenAI from "openai";
 import dotenv from "dotenv";
@@ -14,7 +13,6 @@ const execFileAsync = promisify(execFile);
 dotenv.config();
 
 const app = express();
-const PORT = parseInt(process.env.PORT || '3000', 10);
 
 const SERVER_GEMINI_KEY = process.env.GEMINI_API_KEY;
 const SERVER_OPENAI_KEY = process.env.OPENAI_API_KEY;
@@ -381,31 +379,5 @@ app.get("/api/youtube-info/available", async (_req, res) => {
     return res.json({ available: false });
   }
 });
-
-// Start Server with Vite Middleware (hanya dijalankan jika bukan lingkungan Vercel serverless)
-async function start() {
-  if (process.env.NODE_ENV !== "production") {
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (_req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
-  }
-
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[AI Auto Clipper] Server active at http://0.0.0.0:${PORT}`);
-  });
-}
-
-if (!process.env.VERCEL) {
-  start();
-}
 
 export default app;
