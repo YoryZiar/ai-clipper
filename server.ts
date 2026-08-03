@@ -19,20 +19,24 @@ const SERVER_OPENAI_KEY = process.env.OPENAI_API_KEY;
 const SERVER_OPENAI_BASE_URL = process.env.OPENAI_BASE_URL || "https://kenari.id/v1";
 const DEFAULT_OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5-6-luna";
 
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" },
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:", "https:", "blob:"],
-      mediaSrc: ["'self'", "blob:", "https:"],
-      connectSrc: ["'self'", "ws:", "wss:", "https:"],
-      fontSrc: ["'self'", "data:"],
+const IS_SERVERLESS = process.env.VERCEL === '1' || !!process.env.AWS_LAMBDA_FUNCTION_NAME || !!process.env.VERCEL_REGION;
+
+if (!IS_SERVERLESS) {
+  app.use(helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "https:", "blob:"],
+        mediaSrc: ["'self'", "blob:", "https:"],
+        connectSrc: ["'self'", "ws:", "wss:", "https:"],
+        fontSrc: ["'self'", "data:"],
+      },
     },
-  },
-}));
+  }));
+}
 
 app.use(cors({
   origin: process.env.APP_URL || true,
