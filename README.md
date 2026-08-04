@@ -18,30 +18,32 @@ Platform otomatis bertenaga AI yang menyeleksi bagian paling menarik dari video 
 
 | Layer | Teknologi |
 |-------|-----------|
-| **Frontend** | React 19, TypeScript, Vite 6, Tailwind CSS 4, React Router 6 |
+| **Frontend** | React 19, TypeScript, Vite 6, Tailwind CSS 4, React Router |
 | **UI Library** | Lucide React, Motion (Framer Motion) |
 | **Video Player** | React Player |
 | **Render Engine** | FFmpeg.wasm |
-| **AI Provider** | Google Gemini (`@google/genai`), OpenAI SDK |
-| **Backend** | Express, Helmet, CORS, Rate Limiting |
+| **AI Provider** | Google Gemini (`@google/genai`), OpenAI SDK (OpenAI-compatible, mis. Kenari) |
+| **Auto-Transkripsi** | Web Speech API native browser |
+| **Backend** | Express, CORS, Rate Limiting, Input Validation |
 | **YouTube** | yt-dlp (server-side) |
+| **Package Manager** | Bun |
 
 ## Quick Start
 
 ```bash
-# Install dependencies
-npm install
+# Install dependencies (pakai Bun)
+bun install
 
 # Set environment variables
 cp .env.example .env
-# Edit .env — set GEMINI_API_KEY or use app settings for custom keys
+# Edit .env — set GEMINI_API_KEY / OPENAI_API_KEY sesuai provider
 
 # Development
-npm run dev
+bun run dev
 
 # Production build
-npm run build
-npm start
+bun run build
+bun start
 ```
 
 Server berjalan di `http://localhost:3000`.
@@ -57,10 +59,17 @@ Server berjalan di `http://localhost:3000`.
 | `APP_URL` | Tidak | Origin URL untuk CORS (default: allow all) |
 | `PORT` | Tidak | Server port (default: 3000) |
 
+### Model AI
+
+Backend mendukung provider OpenAI-compatible (seperti **Kenari** di `https://kenari.id/v1`). Model default adalah `gpt-5-6-luna`, dapat diubah via `OPENAI_MODEL`. Provider Gemini tersedia sebagai alternatif.
+
 ## API Endpoints
 
 ### `GET /api/health`
 Health check.
+
+### `GET /api/ai-config`
+Mengembalikan status konfigurasi AI server (apakah key server terkonfigurasi, default model) **tanpa membocorkan API key**.
 
 ### `POST /api/generate-clips`
 AI clip generation. Rate limited: 30 req/menit.
@@ -68,7 +77,7 @@ AI clip generation. Rate limited: 30 req/menit.
 Headers:
 - `x-ai-provider`: `openai` (opsional, default: gemini)
 - `x-custom-gemini-api-key`: Custom Gemini key
-- `x-openai-api-key`, `x-openai-base-url`, `x-openai-model`: OpenAI config
+- `x-openai-api-key`, `x-openai-base-url`, `x-openai-model`: OpenAI config (opsional — server pakai env jika key klien tidak diberikan)
 
 Body: `{ videoTitle, genre, clipCount, targetDuration, subtitleLang, youtubeUrl, transcriptText }`
 
@@ -80,9 +89,22 @@ Body: `{ youtubeUrl: string }`
 ### `GET /api/youtube-info/available`
 Check yt-dlp availability.
 
+## Deployment (Vercel Serverless)
+
+Backend Express dapat di-deploy ke Vercel sebagai serverless function:
+
+- **`api/index.ts`** — entrypoint serverless Vercel yang mengekspor Express app (`@vercel/node`)
+- **`server.ts`** — murni mengekspor `app` Express (tanpa `listen`)
+- **`start-server.ts`** — memuat Vite middleware (dev) / dist statis (prod) + `app.listen`, untuk dev lokal & Node long-running
+- **`vercel.json`** — deklarasi build function + rewrite `/api/*` → function, serta SPA routing
+
+**Penting:** Proyek Vercel harus dikonfigurasi dengan **framework "Other"** (bukan preset Vite) agar folder `api/` dibuild sebagai serverless function. Set env var (`GEMINI_API_KEY`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`) di dashboard Vercel.
+
 ## Project Structure
 
 ```
+api/
+└── index.ts                  # Entrypoint Vercel serverless (@vercel/node)
 src/
 ├── main.tsx                  # Entry point
 ├── App.tsx                   # Root with Router + Providers
@@ -99,7 +121,7 @@ src/
 │   │   └── UserDashboard.tsx # Video input + AI config + clip results
 │   ├── workspace/
 │   │   ├── VideoWorkspace.tsx # 9:16 editor + timeline + subtitle tabs
-│   │   └── ExportModal.tsx   # FFmpeg.wasm export dialog
+│   │   └── ExportModal.tsx   # FFmpeg.wasm export dialog (burn-in subtitle)
 │   └── settings/
 │       └── SettingsPage.tsx  # AI provider + API key config
 ├── data/
@@ -107,13 +129,17 @@ src/
 ├── types/
 │   └── index.ts             # TypeScript type definitions
 └── utils/
+    ├── transcribe.ts         # Auto-transkripsi Web Speech API
     └── secureStorage.ts     # Encrypted localStorage
-server.ts                     # Express + Vite server
+server.ts                     # Express app (export default, tanpa listen)
+start-server.ts               # Dev/Prod server (Vite middleware / dist + listen)
 ```
 
 ## Security
 
-- API keys dienkripsi di localStorage via XOR cipher
-- Server dilindungi Helm + CORS + rate limiting
-- Input validation whitelist pada semua endpoint
-- Error boundary di seluruh aplikasi
+- **API key server-side** — key disimpan di env server; key klien hanya fallback
+- **`/api/ai-config`** — status konfigurasi tanpa membocorkan key
+- **CORS** — origin dibatasi via `APP_URL`
+- **Rate limiting** — 30 req/mnt (generate-clips), 60 req/mnt (youtube-info)
+- **Input validation whitelist** pada semua endpoint
+- **Error boundary** di seluruh aplikasi
